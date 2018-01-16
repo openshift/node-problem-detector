@@ -22,13 +22,6 @@ Release:        0%{?dist}
 Summary:        Node monitoring for OpenShift
 License:        ASL 2.0
 URL:            https://%{import_path}
-
-# tar file created like this:
-#   mkdir -p aos-node-problem-detector-3.7.0/go/src/k8s.io/node-problem-detector && \
-#   curl -L https://github.com/kubernetes/node-problem-detector/archive/c0bd1df.tar.gz \
-#     | tar zxf - -C aos-node-problem-detector-3.7.0/go/src/k8s.io/node-problem-detector --strip-components 1 && \
-#   tar zcf aos-node-problem-detector-3.7.0.tar.gz --owner=root:0 --group=root:0 aos-node-problem-detector-3.7.0
-
 Source0:        aos-node-problem-detector-3.7.0.tar.gz
 BuildRequires:  systemd-devel
 BuildRequires:  golang >= %{golang_version}
@@ -44,6 +37,9 @@ the cluster API.
 %setup -n aos-node-problem-detector-%{version}
 
 %build
+files=( * )
+mkdir -p go/src/k8s.io/node-problem-detector
+mv "${files[@]}" go/src/k8s.io/node-problem-detector
 export GOPATH=`pwd`/go
 cd go/src/k8s.io/node-problem-detector
 make bin/node-problem-detector VERSION=%{version}-%{release}
