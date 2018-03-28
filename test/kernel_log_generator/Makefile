@@ -16,7 +16,7 @@
 
 .PHONY: all build push
 
-PROJ ?= gcr.io/google_containers
+PROJ ?= staging-k8s.gcr.io
 TAG := 0.1
 
 all: push
