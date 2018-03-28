@@ -24,8 +24,8 @@ VERSION:=$(shell git describe --tags --dirty)
 # TAG is the tag of the container image, default to binary version.
 TAG?=$(VERSION)
 
-# PROJ is the image project.
-PROJ?=gcr.io/google_containers
+# REGISTRY is the container registry to push into.
+REGISTRY?=staging-k8s.gcr.io
 
 # UPLOAD_PATH is the cloud storage path to upload release tar.
 UPLOAD_PATH?=gs://kubernetes-release
@@ -42,7 +42,7 @@ PKG_SOURCES:=$(shell find pkg cmd -name '*.go')
 TARBALL:=node-problem-detector-$(VERSION).tar.gz
 
 # IMAGE is the image name of the node problem detector container image.
-IMAGE:=$(PROJ)/node-problem-detector:$(TAG)
+IMAGE:=$(REGISTRY)/node-problem-detector:$(TAG)
 
 # ENABLE_JOURNALD enables build journald support or not. Building journald support needs libsystemd-dev
 # or libsystemd-journal-dev.
@@ -50,18 +50,17 @@ IMAGE:=$(PROJ)/node-problem-detector:$(TAG)
 ENABLE_JOURNALD?=1
 
 # TODO(random-liu): Support different architectures.
-BASEIMAGE:=alpine:3.4
+# The debian-base:0.3 image built from kubernetes repository is based on Debian Stretch.
+# It includes systemd 232 with support for both +XZ and +LZ4 compression.
+# +LZ4 is needed on some os distros such as COS.
+BASEIMAGE:=gcr.io/google-containers/debian-base-amd64:0.3
 
 # Disable cgo by default to make the binary statically linked.
 CGO_ENABLED:=0
 
-# NOTE that enable journald will increase the image size.
 ifeq ($(ENABLE_JOURNALD), 1)
 	# Enable journald build tag.
 	BUILD_TAGS:=-tags journald
-	# Use fedora because it has newer systemd version (229) and support +LZ4. +LZ4 is needed
-	# on some os distros such as GCI.
-	BASEIMAGE:=fedora
 	# Enable cgo because sdjournal needs cgo to compile. The binary will be dynamically
 	# linked if CGO_ENABLED is enabled. This is fine because fedora already has necessary
 	# dynamic library. We can not use `-extldflags "-static"` here, because go-systemd uses
@@ -87,7 +86,7 @@ Dockerfile: Dockerfile.in
 	sed -e 's|@BASEIMAGE@|$(BASEIMAGE)|g' $< >$@
 
 test: vet fmt
-	go test -timeout=1m -v -race ./pkg/... $(BUILD_TAGS)
+	go test -timeout=1m -v -race ./cmd/options ./pkg/... $(BUILD_TAGS)
 
 build-container: ./bin/node-problem-detector Dockerfile
 	docker build -t $(IMAGE) .
