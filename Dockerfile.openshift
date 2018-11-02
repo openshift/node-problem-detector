@@ -1,0 +1,8 @@
+FROM openshift/origin-release:golang-1.10
+COPY . /go/src/k8s.io/node-problem-detector
+RUN yum install -y systemd-devel
+RUN cd /go/src/k8s.io/node-problem-detector && make build-binaries
+
+FROM centos:7
+COPY --from=0 /go/src/k8s.io/node-problem-detector/bin/node-problem-detector /go/src/k8s.io/node-problem-detector/bin/log-counter /usr/bin/
+
