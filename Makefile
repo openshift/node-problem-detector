@@ -14,12 +14,13 @@
 
 # Build the node-problem-detector image.
 
-.PHONY: all build-container build-tar build push-container push-tar push clean vet fmt version Dockerfile
+.PHONY: all build-container build-tar build push-container push-tar push clean vet fmt version \
+        Dockerfile build-binaries docker-builder build-in-docker
 
 all: build
 
 # VERSION is the version of the binary.
-VERSION:=$(shell git describe --tags --dirty)
+VERSION?=$(shell if [ -d .git ]; then echo `git describe --tags --dirty`; else echo "UNKNOWN"; fi)
 
 # TAG is the tag of the container image, default to binary version.
 TAG?=$(VERSION)
@@ -46,14 +47,13 @@ IMAGE:=$(REGISTRY)/node-problem-detector:$(TAG)
 
 # ENABLE_JOURNALD enables build journald support or not. Building journald support needs libsystemd-dev
 # or libsystemd-journal-dev.
-# TODO(random-liu): Build NPD inside container.
 ENABLE_JOURNALD?=1
 
 # TODO(random-liu): Support different architectures.
 # The debian-base:0.3 image built from kubernetes repository is based on Debian Stretch.
 # It includes systemd 232 with support for both +XZ and +LZ4 compression.
 # +LZ4 is needed on some os distros such as COS.
-BASEIMAGE:=gcr.io/google-containers/debian-base-amd64:0.3
+BASEIMAGE:=k8s.gcr.io/debian-base-amd64:0.3
 
 # Disable cgo by default to make the binary statically linked.
 CGO_ENABLED:=0
@@ -77,6 +77,11 @@ fmt:
 version:
 	@echo $(VERSION)
 
+./bin/log-counter: $(PKG_SOURCES)
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux go build -o bin/log-counter \
+	     -ldflags '-X $(PKG)/pkg/version.version=$(VERSION)' \
+	     $(BUILD_TAGS) cmd/logcounter/log_counter.go
+
 ./bin/node-problem-detector: $(PKG_SOURCES)
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux go build -o bin/node-problem-detector \
 	     -ldflags '-X $(PKG)/pkg/version.version=$(VERSION)' \
@@ -88,15 +93,23 @@ Dockerfile: Dockerfile.in
 test: vet fmt
 	go test -timeout=1m -v -race ./cmd/options ./pkg/... $(BUILD_TAGS)
 
-build-container: ./bin/node-problem-detector Dockerfile
+build-binaries: ./bin/node-problem-detector ./bin/log-counter
+
+build-container: build-binaries Dockerfile
 	docker build -t $(IMAGE) .
 
-build-tar: ./bin/node-problem-detector
+build-tar: ./bin/node-problem-detector ./bin/log-counter
 	tar -zcvf $(TARBALL) bin/ config/
 	sha1sum $(TARBALL)
 	md5sum $(TARBALL)
 
 build: build-container build-tar
+
+docker-builder:
+	docker build -t npd-builder ./builder
+
+build-in-docker: clean docker-builder
+	docker run -v `pwd`:/gopath/src/k8s.io/node-problem-detector/ npd-builder:latest bash -c 'cd /gopath/src/k8s.io/node-problem-detector/ && make build-binaries'
 
 push-container: build-container
 	gcloud docker -- push $(IMAGE)
@@ -107,5 +120,6 @@ push-tar: build-tar
 push: push-container push-tar
 
 clean:
+	rm -f bin/log-counter
 	rm -f bin/node-problem-detector
 	rm -f node-problem-detector-*.tar.gz
