@@ -4,6 +4,6 @@ COPY . .
 RUN yum install -y systemd-devel && \
     make build-binaries
 
-FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-base-openshift
+FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-base-openshift-4.7
 COPY --from=builder /go/src/k8s.io/node-problem-detector/bin/node-problem-detector /usr/bin/
 COPY --from=builder /go/src/k8s.io/node-problem-detector/bin/log-counter /usr/bin/
