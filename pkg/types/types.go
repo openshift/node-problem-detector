@@ -18,6 +18,8 @@ package types
 
 import (
 	"time"
+
+	"github.com/spf13/pflag"
 )
 
 // The following types are used internally in problem detector. In the future this could be the
@@ -99,11 +101,50 @@ const (
 	Perm Type = "permanent"
 )
 
-// Monitor monitors log and custom plugins and reports node problem condition and event according to
-// the rules.
+// Monitor monitors the system and reports problems and metrics according to the rules.
 type Monitor interface {
-	// Start starts the log monitor.
+	// Start starts the monitor.
+	// The Status channel is used to report problems. If the Monitor does not report any
+	// problem (i.e. metrics reporting only), the channel should be set to nil.
 	Start() (<-chan *Status, error)
-	// Stop stops the log monitor.
+	// Stop stops the monitor.
 	Stop()
+}
+
+// Exporter exports machine health data to certain control plane.
+type Exporter interface {
+	// Export problems to the control plane.
+	ExportProblems(*Status)
+}
+
+// ProblemDaemonType is the type of the problem daemon.
+// One type of problem daemon may be used to initialize multiple problem daemon instances.
+type ProblemDaemonType string
+
+// ProblemDaemonConfigPathMap represents configurations on all types of problem daemons:
+// 1) Each key represents a type of problem daemon.
+// 2) Each value represents the config file paths to that type of problem daemon.
+type ProblemDaemonConfigPathMap map[ProblemDaemonType]*[]string
+
+// ProblemDaemonHandler represents the initialization handler for a type problem daemon.
+type ProblemDaemonHandler struct {
+	// CreateProblemDaemonOrDie initializes a problem daemon, panic if error occurs.
+	CreateProblemDaemonOrDie func(string) Monitor
+	// CmdOptionDescription explains how to configure the problem daemon from command line arguments.
+	CmdOptionDescription string
+}
+
+// ExporterType is the type of the exporter.
+type ExporterType string
+
+// ExporterHandler represents the initialization handler for a type of exporter.
+type ExporterHandler struct {
+	// CreateExporterOrDie initializes an exporter, panic if error occurs.
+	CreateExporterOrDie func(CommandLineOptions) Exporter
+	// CmdOptionDescription explains how to configure the exporter from command line arguments.
+	Options CommandLineOptions
+}
+
+type CommandLineOptions interface {
+	SetFlags(*pflag.FlagSet)
 }
