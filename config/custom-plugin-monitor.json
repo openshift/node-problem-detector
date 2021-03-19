@@ -4,11 +4,9 @@
     "invoke_interval": "30s",
     "timeout": "5s",
     "max_output_length": 80,
-    "concurrency": 3,
-    "enable_message_change_based_condition_update": false
+    "concurrency": 3
   },
   "source": "ntp-custom-plugin-monitor",
-  "metricsReporting": true,
   "conditions": [
     {
       "type": "NTPProblem",

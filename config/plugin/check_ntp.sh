@@ -1,27 +1,23 @@
 #!/bin/bash
 
-# This plugin checks if the ntp service is running under systemd.
-# NOTE: This is only an example for systemd services.
+# NOTE: THIS NTP SERVICE CHECK SCRIPT ASSUME THAT NTP SERVICE IS RUNNING UNDER SYSTEMD.
+#       THIS IS JUST AN EXAMPLE. YOU CAN WRITE YOUR OWN NODE PROBLEM PLUGIN ON DEMAND.
 
-readonly OK=0
-readonly NONOK=1
-readonly UNKNOWN=2
+OK=0
+NONOK=1
+UNKNOWN=2
 
-readonly SERVICE='ntp.service'
-
-# Check systemd cmd present
-if ! command -v systemctl >/dev/null; then
-  echo "Could not find 'systemctl' - require systemd"
-  exit $UNKNOWN
+which systemctl >/dev/null
+if [ $? -ne 0 ]; then
+    echo "Systemd is not supported"
+    exit $UNKNOWN
 fi
 
-# Return success if service active (i.e. running)
-if systemctl -q is-active "$SERVICE"; then
-  echo "$SERVICE is running"
-  exit $OK
-else
-  # Does not differenciate stopped/failed service from non-existent
-  echo "$SERVICE is not running"
-  exit $NONOK
+systemctl status ntp.service | grep 'Active:' | grep -q running
+if [ $? -ne 0 ]; then
+    echo "NTP service is not running"
+    exit $NONOK
 fi
 
+echo "NTP service is running"
+exit $OK

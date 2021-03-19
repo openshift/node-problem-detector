@@ -17,9 +17,8 @@ limitations under the License.
 package types
 
 import (
-	"time"
-
 	"k8s.io/node-problem-detector/pkg/types"
+	"time"
 )
 
 // Log is the log item returned by translator. It's very easy to extend this

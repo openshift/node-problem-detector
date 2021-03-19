@@ -1,5 +1,3 @@
-// +build journald
-
 /*
 Copyright 2018 The Kubernetes Authors All rights reserved.
 
@@ -27,15 +25,14 @@ import (
 	"k8s.io/node-problem-detector/cmd/logcounter/options"
 	"k8s.io/node-problem-detector/pkg/logcounter/types"
 	"k8s.io/node-problem-detector/pkg/systemlogmonitor"
-	"k8s.io/node-problem-detector/pkg/systemlogmonitor/logwatchers/journald"
+	"k8s.io/node-problem-detector/pkg/systemlogmonitor/logwatchers/kmsg"
 	watchertypes "k8s.io/node-problem-detector/pkg/systemlogmonitor/logwatchers/types"
 	systemtypes "k8s.io/node-problem-detector/pkg/systemlogmonitor/types"
 )
 
 const (
-	bufferSize        = 1000
-	timeout           = 1 * time.Second
-	journaldSourceKey = "source"
+	bufferSize = 1000
+	timeout    = 1 * time.Second
 )
 
 type logCounter struct {
@@ -45,17 +42,11 @@ type logCounter struct {
 	clock   clock.Clock
 }
 
-func NewJournaldLogCounter(options *options.LogCounterOptions) (types.LogCounter, error) {
-	watcher := journald.NewJournaldWatcher(watchertypes.WatcherConfig{
-		Plugin:       "journald",
-		PluginConfig: map[string]string{journaldSourceKey: options.JournaldSource},
-		LogPath:      options.LogPath,
-		Lookback:     options.Lookback,
-		Delay:        options.Delay,
-	})
+func NewKmsgLogCounter(options *options.LogCounterOptions) (types.LogCounter, error) {
+	watcher := kmsg.NewKmsgWatcher(watchertypes.WatcherConfig{Lookback: options.Lookback})
 	logCh, err := watcher.Watch()
 	if err != nil {
-		return nil, fmt.Errorf("error watching journald: %v", err)
+		return nil, fmt.Errorf("error watching kmsg: %v", err)
 	}
 	return &logCounter{
 		logCh:   logCh,
@@ -65,15 +56,11 @@ func NewJournaldLogCounter(options *options.LogCounterOptions) (types.LogCounter
 	}, nil
 }
 
-func (e *logCounter) Count() (count int, err error) {
+func (e *logCounter) Count() (count int) {
 	start := e.clock.Now()
 	for {
 		select {
-		case log, ok := <-e.logCh:
-			if !ok {
-				err = fmt.Errorf("log channel closed unexpectedly")
-				return
-			}
+		case log := <-e.logCh:
 			// We only want to count events up until the time at which we started.
 			// Otherwise we would run forever
 			if start.Before(log.Timestamp) {

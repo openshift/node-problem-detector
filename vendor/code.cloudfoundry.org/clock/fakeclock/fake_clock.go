@@ -1,7 +1,6 @@
 package fakeclock
 
 import (
-	"errors"
 	"sync"
 	"time"
 
@@ -10,21 +9,19 @@ import (
 
 type timeWatcher interface {
 	timeUpdated(time.Time)
-	shouldFire(time.Time) bool
-	repeatable() bool
 }
 
 type FakeClock struct {
 	now time.Time
 
-	watchers map[timeWatcher]struct{}
+	watchers map[timeWatcher]int
 	cond     *sync.Cond
 }
 
 func NewFakeClock(now time.Time) *FakeClock {
 	return &FakeClock{
 		now:      now,
-		watchers: make(map[timeWatcher]struct{}),
+		watchers: make(map[timeWatcher]int),
 		cond:     &sync.Cond{L: &sync.Mutex{}},
 	}
 }
@@ -72,10 +69,6 @@ func (clock *FakeClock) After(d time.Duration) <-chan time.Time {
 }
 
 func (clock *FakeClock) NewTicker(d time.Duration) clock.Ticker {
-	if d <= 0 {
-		panic(errors.New("duration must be greater than zero"))
-	}
-
 	timer := newFakeTimer(clock, d, true)
 	clock.addTimeWatcher(timer)
 
@@ -99,20 +92,10 @@ func (clock *FakeClock) increment(duration time.Duration, waitForWatchers bool, 
 	now := clock.now.Add(duration)
 	clock.now = now
 
-	watchers := make([]timeWatcher, 0)
-	newWatchers := map[timeWatcher]struct{}{}
+	watchers := make([]timeWatcher, 0, len(clock.watchers))
 	for w, _ := range clock.watchers {
-		fire := w.shouldFire(now)
-		if fire {
-			watchers = append(watchers, w)
-		}
-
-		if !fire || w.repeatable() {
-			newWatchers[w] = struct{}{}
-		}
+		watchers = append(watchers, w)
 	}
-
-	clock.watchers = newWatchers
 
 	clock.cond.L.Unlock()
 
@@ -123,17 +106,22 @@ func (clock *FakeClock) increment(duration time.Duration, waitForWatchers bool, 
 
 func (clock *FakeClock) addTimeWatcher(tw timeWatcher) {
 	clock.cond.L.Lock()
-	clock.watchers[tw] = struct{}{}
+	clock.watchers[tw]++
 	clock.cond.L.Unlock()
 
-	// force the timer to fire
-	clock.Increment(0)
+	tw.timeUpdated(clock.Now())
 
 	clock.cond.Broadcast()
 }
 
 func (clock *FakeClock) removeTimeWatcher(tw timeWatcher) {
 	clock.cond.L.Lock()
-	delete(clock.watchers, tw)
+	count := clock.watchers[tw]
+	count--
+	if count <= 0 {
+		delete(clock.watchers, tw)
+	} else {
+		clock.watchers[tw] = count
+	}
 	clock.cond.L.Unlock()
 }
