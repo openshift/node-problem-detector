@@ -4,11 +4,8 @@ sudo: required
 dist: trusty
 language: go
 go:
- - "1.11"
- - "1.12"
- - master
-env:
-- GO111MODULE=on
+ - 1.9
+ - "1.10"
 services:
  - docker
 before_install:
@@ -18,16 +15,9 @@ install:
  - mkdir -p $HOME/gopath/src/k8s.io
  - mv $TRAVIS_BUILD_DIR $HOME/gopath/src/k8s.io/node-problem-detector
  - cd $HOME/gopath/src/k8s.io/node-problem-detector
-script:
- - make
- - make test
- - make clean && BUILD_TAGS="disable_custom_plugin_monitor" make
- - BUILD_TAGS="disable_custom_plugin_monitor" make test
- - make clean && BUILD_TAGS="disable_system_log_monitor" make
- - BUILD_TAGS="disable_system_log_monitor" make test
- - make clean && BUILD_TAGS="disable_system_stats_monitor" make
- - BUILD_TAGS="disable_system_stats_monitor" make test
- - make clean && BUILD_TAGS="disable_stackdriver_exporter" make
- - BUILD_TAGS="disable_stackdriver_exporter" make test
- - make clean && ENABLE_JOURNALD=0 make
- - ENABLE_JOURNALD=0 make test
+jobs:
+  include:
+    - stage: Test
+      script: make test
+    - stage: Build
+      script: make

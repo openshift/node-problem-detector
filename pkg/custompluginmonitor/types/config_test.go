@@ -20,8 +20,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"k8s.io/node-problem-detector/pkg/types"
 )
 
 func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
@@ -31,8 +29,6 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 	invokeIntervalString := invokeInterval.String()
 	maxOutputLength := 79
 	concurrency := 2
-	messageChangeBasedConditionUpdate := true
-	disableMetricsReporting := false
 
 	ruleTimeout := 1 * time.Second
 	ruleTimeoutString := ruleTimeout.String()
@@ -55,15 +51,13 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 			},
 			Wanted: CustomPluginConfig{
 				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
+					InvokeIntervalString: &defaultInvokeIntervalString,
+					InvokeInterval:       &defaultInvokeInterval,
+					TimeoutString:        &defaultGlobalTimeoutString,
+					Timeout:              &defaultGlobalTimeout,
+					MaxOutputLength:      &defaultMaxOutputLength,
+					Concurrency:          &defaultConcurrency,
 				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
 				Rules: []*CustomRule{
 					{
 						Path: "../plugin/test-data/ok.sh",
@@ -84,15 +78,13 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 			},
 			Wanted: CustomPluginConfig{
 				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &invokeIntervalString,
-					InvokeInterval:                          &invokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
+					InvokeIntervalString: &invokeIntervalString,
+					InvokeInterval:       &invokeInterval,
+					TimeoutString:        &defaultGlobalTimeoutString,
+					Timeout:              &defaultGlobalTimeout,
+					MaxOutputLength:      &defaultMaxOutputLength,
+					Concurrency:          &defaultConcurrency,
 				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
 			},
 		},
 		"custom default timeout": {
@@ -103,15 +95,13 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 			},
 			Wanted: CustomPluginConfig{
 				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &globalTimeoutString,
-					Timeout:                                 &globalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
+					InvokeIntervalString: &defaultInvokeIntervalString,
+					InvokeInterval:       &defaultInvokeInterval,
+					TimeoutString:        &globalTimeoutString,
+					Timeout:              &globalTimeout,
+					MaxOutputLength:      &defaultMaxOutputLength,
+					Concurrency:          &defaultConcurrency,
 				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
 			},
 		},
 		"custom max output length": {
@@ -122,15 +112,13 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 			},
 			Wanted: CustomPluginConfig{
 				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &maxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
+					InvokeIntervalString: &defaultInvokeIntervalString,
+					InvokeInterval:       &defaultInvokeInterval,
+					TimeoutString:        &defaultGlobalTimeoutString,
+					Timeout:              &defaultGlobalTimeout,
+					MaxOutputLength:      &maxOutputLength,
+					Concurrency:          &defaultConcurrency,
 				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
 			},
 		},
 		"custom concurrency": {
@@ -141,51 +129,13 @@ func TestCustomPluginConfigApplyConfiguration(t *testing.T) {
 			},
 			Wanted: CustomPluginConfig{
 				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &concurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
+					InvokeIntervalString: &defaultInvokeIntervalString,
+					InvokeInterval:       &defaultInvokeInterval,
+					TimeoutString:        &defaultGlobalTimeoutString,
+					Timeout:              &defaultGlobalTimeout,
+					MaxOutputLength:      &defaultMaxOutputLength,
+					Concurrency:          &concurrency,
 				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
-			},
-		},
-		"custom message change based condition update": {
-			Orig: CustomPluginConfig{
-				PluginGlobalConfig: pluginGlobalConfig{
-					EnableMessageChangeBasedConditionUpdate: &messageChangeBasedConditionUpdate,
-				},
-			},
-			Wanted: CustomPluginConfig{
-				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &messageChangeBasedConditionUpdate,
-				},
-				EnableMetricsReporting: &defaultEnableMetricsReporting,
-			},
-		},
-		"disable metrics reporting": {
-			Orig: CustomPluginConfig{
-				EnableMetricsReporting: &disableMetricsReporting,
-			},
-			Wanted: CustomPluginConfig{
-				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeIntervalString:                    &defaultInvokeIntervalString,
-					InvokeInterval:                          &defaultInvokeInterval,
-					TimeoutString:                           &defaultGlobalTimeoutString,
-					Timeout:                                 &defaultGlobalTimeout,
-					MaxOutputLength:                         &defaultMaxOutputLength,
-					Concurrency:                             &defaultConcurrency,
-					EnableMessageChangeBasedConditionUpdate: &defaultMessageChangeBasedConditionUpdate,
-				},
-				EnableMetricsReporting: &disableMetricsReporting,
 			},
 		},
 	}
@@ -281,66 +231,17 @@ func TestCustomPluginConfigValidate(t *testing.T) {
 			},
 			IsError: true,
 		},
-		"permanent problem has preset default condition": {
-			Conf: CustomPluginConfig{
-				Plugin: customPluginName,
-				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeInterval:  &defaultInvokeInterval,
-					Timeout:         &defaultGlobalTimeout,
-					MaxOutputLength: &defaultMaxOutputLength,
-					Concurrency:     &defaultConcurrency,
-				},
-				DefaultConditions: []types.Condition{
-					{
-						Type:    "TestCondition",
-						Reason:  "TestConditionOK",
-						Message: "Test condition is OK.",
-					},
-				},
-				Rules: []*CustomRule{
-					{
-						Type:      types.Perm,
-						Condition: "TestCondition",
-						Reason:    "TestConditionFail",
-						Path:      "../plugin/test-data/ok.sh",
-						Timeout:   &normalRuleTimeout,
-					},
-				},
-			},
-			IsError: false,
-		},
-		"permanent problem does not have preset default condition": {
-			Conf: CustomPluginConfig{
-				Plugin: customPluginName,
-				PluginGlobalConfig: pluginGlobalConfig{
-					InvokeInterval:  &defaultInvokeInterval,
-					Timeout:         &defaultGlobalTimeout,
-					MaxOutputLength: &defaultMaxOutputLength,
-					Concurrency:     &defaultConcurrency,
-				},
-				Rules: []*CustomRule{
-					{
-						Type:      types.Perm,
-						Condition: "TestCondition",
-						Reason:    "TestConditionFail",
-						Path:      "../plugin/test-data/ok.sh",
-						Timeout:   &normalRuleTimeout,
-					},
-				},
-			},
-			IsError: true,
-		},
 	}
 
 	for desp, utMeta := range utMetas {
 		err := utMeta.Conf.Validate()
 		if err != nil && !utMeta.IsError {
 			t.Error(desp)
-			t.Errorf("Error in validating custom plugin configuration %+v. Wanted nil got an error", utMeta)
+			t.Errorf("Error in validating custom plugin configuration %+v. Want an error got nil", utMeta)
 		}
 		if err == nil && utMeta.IsError {
 			t.Error(desp)
-			t.Errorf("Error in validating custom plugin configuration %+v. Wanted an error got nil", utMeta)
+			t.Errorf("Error in validating custom plugin configuration %+v. Want nil got an error", utMeta)
 		}
 	}
 }

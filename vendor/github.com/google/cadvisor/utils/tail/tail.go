@@ -24,8 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog"
-	inotify "k8s.io/utils/inotify"
+	"github.com/fsnotify/fsnotify"
+	"github.com/golang/glog"
 )
 
 type Tail struct {
@@ -35,7 +35,7 @@ type Tail struct {
 	filename   string
 	file       *os.File
 	stop       chan bool
-	watcher    *inotify.Watcher
+	watcher    *fsnotify.Watcher
 }
 
 const (
@@ -60,9 +60,9 @@ func newTail(filename string) (*Tail, error) {
 	}
 	var err error
 	t.stop = make(chan bool)
-	t.watcher, err = inotify.NewWatcher()
+	t.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("inotify init failed on %s: %v", t.filename, err)
+		return nil, fmt.Errorf("fsnotify init failed on %s: %v", t.filename, err)
 	}
 	// Initialize readerErr as io.EOF, so that the reader can work properly
 	// during initialization.
@@ -96,7 +96,7 @@ func (t *Tail) attemptOpen() error {
 	var lastErr error
 	for interval := defaultRetryInterval; ; interval *= 2 {
 		attempt++
-		klog.V(4).Infof("Opening %s (attempt %d)", t.filename, attempt)
+		glog.V(4).Infof("Opening %s (attempt %d)", t.filename, attempt)
 		var err error
 		t.file, err = os.Open(t.filename)
 		if err == nil {
@@ -106,7 +106,7 @@ func (t *Tail) attemptOpen() error {
 			return nil
 		}
 		lastErr = err
-		klog.V(4).Infof("open log file %s error: %v", t.filename, err)
+		glog.V(4).Infof("open log file %s error: %v", t.filename, err)
 
 		if interval >= maxRetryInterval {
 			break
@@ -127,7 +127,7 @@ func (t *Tail) watchLoop() {
 	for {
 		err := t.watchFile()
 		if err != nil {
-			klog.Errorf("Tail failed on %s: %v", t.filename, err)
+			glog.Errorf("Tail failed on %s: %v", t.filename, err)
 			break
 		}
 	}
@@ -141,18 +141,18 @@ func (t *Tail) watchFile() error {
 	defer t.file.Close()
 
 	watchDir := filepath.Dir(t.filename)
-	err = t.watcher.AddWatch(watchDir, inotify.InMovedFrom|inotify.InDelete)
+	err = t.watcher.Add(watchDir)
 	if err != nil {
 		return fmt.Errorf("Failed to add watch to directory %s: %v", watchDir, err)
 	}
-	defer t.watcher.RemoveWatch(watchDir)
+	defer t.watcher.Remove(watchDir)
 
 	for {
 		select {
-		case event := <-t.watcher.Event:
+		case event := <-t.watcher.Events:
 			eventPath := filepath.Clean(event.Name) // Directory events have an extra '/'
 			if eventPath == t.filename {
-				klog.V(4).Infof("Log file %s moved/deleted", t.filename)
+				glog.V(4).Infof("Log file %s moved/deleted", t.filename)
 				return nil
 			}
 		case <-t.stop:

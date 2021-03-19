@@ -7,7 +7,6 @@
     "concurrency": 3
   },
   "source": "network-custom-plugin-monitor",
-  "metricsReporting": true,
   "conditions": [],
   "rules": [
     {

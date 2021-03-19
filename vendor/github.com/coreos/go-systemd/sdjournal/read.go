@@ -21,13 +21,10 @@ import (
 	"io"
 	"log"
 	"strings"
-	"sync"
 	"time"
 )
 
 var (
-	// ErrExpired gets returned when the Follow function runs into the
-	// specified timeout.
 	ErrExpired = errors.New("Timeout expired")
 )
 
@@ -47,11 +44,6 @@ type JournalReaderConfig struct {
 	// If not empty, the journal instance will point to a journal residing
 	// in this directory. The supplied path may be relative or absolute.
 	Path string
-
-	// If not nil, Formatter will be used to translate the resulting entries
-	// into strings. If not set, the default format (timestamp and message field)
-	// will be used. If Formatter returns an error, Read will stop and return the error.
-	Formatter func(entry *JournalEntry) (string, error)
 }
 
 // JournalReader is an io.ReadCloser which provides a simple interface for iterating through the
@@ -59,20 +51,12 @@ type JournalReaderConfig struct {
 type JournalReader struct {
 	journal   *Journal
 	msgReader *strings.Reader
-	formatter func(entry *JournalEntry) (string, error)
 }
 
 // NewJournalReader creates a new JournalReader with configuration options that are similar to the
 // systemd journalctl tool's iteration and filtering features.
 func NewJournalReader(config JournalReaderConfig) (*JournalReader, error) {
-	// use simpleMessageFormatter as default formatter.
-	if config.Formatter == nil {
-		config.Formatter = simpleMessageFormatter
-	}
-
-	r := &JournalReader{
-		formatter: config.Formatter,
-	}
+	r := &JournalReader{}
 
 	// Open the journal
 	var err error
@@ -87,9 +71,7 @@ func NewJournalReader(config JournalReaderConfig) (*JournalReader, error) {
 
 	// Add any supplied matches
 	for _, m := range config.Matches {
-		if err = r.journal.AddMatch(m.String()); err != nil {
-			return nil, err
-		}
+		r.journal.AddMatch(m.String())
 	}
 
 	// Set the start position based on options
@@ -136,10 +118,14 @@ func NewJournalReader(config JournalReaderConfig) (*JournalReader, error) {
 // don't fit in the read buffer. Callers should keep calling until 0 and/or an
 // error is returned.
 func (r *JournalReader) Read(b []byte) (int, error) {
+	var err error
+
 	if r.msgReader == nil {
+		var c uint64
+
 		// Advance the journal cursor. It has to be called at least one time
 		// before reading
-		c, err := r.journal.Next()
+		c, err = r.journal.Next()
 
 		// An unexpected error
 		if err != nil {
@@ -151,13 +137,10 @@ func (r *JournalReader) Read(b []byte) (int, error) {
 			return 0, io.EOF
 		}
 
-		entry, err := r.journal.GetEntry()
-		if err != nil {
-			return 0, err
-		}
-
 		// Build a message
-		msg, err := r.formatter(entry)
+		var msg string
+		msg, err = r.buildMessage()
+
 		if err != nil {
 			return 0, err
 		}
@@ -165,7 +148,8 @@ func (r *JournalReader) Read(b []byte) (int, error) {
 	}
 
 	// Copy and return the message
-	sz, err := r.msgReader.Read(b)
+	var sz int
+	sz, err = r.msgReader.Read(b)
 	if err == io.EOF {
 		// The current entry has been fully read. Don't propagate this
 		// EOF, so the next entry can be read at the next Read()
@@ -196,76 +180,80 @@ func (r *JournalReader) Rewind() error {
 
 // Follow synchronously follows the JournalReader, writing each new journal entry to writer. The
 // follow will continue until a single time.Time is received on the until channel.
-func (r *JournalReader) Follow(until <-chan time.Time, writer io.Writer) error {
+func (r *JournalReader) Follow(until <-chan time.Time, writer io.Writer) (err error) {
 
 	// Process journal entries and events. Entries are flushed until the tail or
 	// timeout is reached, and then we wait for new events or the timeout.
 	var msg = make([]byte, 64*1<<(10))
-	var waitCh = make(chan int, 1)
-	var waitGroup sync.WaitGroup
-	defer waitGroup.Wait()
-
 process:
 	for {
 		c, err := r.Read(msg)
 		if err != nil && err != io.EOF {
-			return err
+			break process
 		}
 
 		select {
 		case <-until:
 			return ErrExpired
 		default:
-		}
-		if c > 0 {
-			if _, err = writer.Write(msg[:c]); err != nil {
-				return err
+			if c > 0 {
+				if _, err = writer.Write(msg[:c]); err != nil {
+					break process
+				}
+				continue process
 			}
-			continue process
 		}
 
 		// We're at the tail, so wait for new events or time out.
 		// Holds journal events to process. Tightly bounded for now unless there's a
 		// reason to unblock the journal watch routine more quickly.
-		for {
-			waitGroup.Add(1)
-			go func() {
-				status := r.journal.Wait(100 * time.Millisecond)
-				waitCh <- status
-				waitGroup.Done()
-			}()
-
-			select {
-			case <-until:
-				return ErrExpired
-			case e := <-waitCh:
-				switch e {
-				case SD_JOURNAL_NOP:
-					// the journal did not change since the last invocation
-				case SD_JOURNAL_APPEND, SD_JOURNAL_INVALIDATE:
-					continue process
+		events := make(chan int, 1)
+		pollDone := make(chan bool, 1)
+		go func() {
+			for {
+				select {
+				case <-pollDone:
+					return
 				default:
-					if e < 0 {
-						return fmt.Errorf("received error event: %d", e)
-					}
-
-					log.Printf("received unknown event: %d\n", e)
+					events <- r.journal.Wait(time.Duration(1) * time.Second)
 				}
 			}
+		}()
+
+		select {
+		case <-until:
+			pollDone <- true
+			return ErrExpired
+		case e := <-events:
+			pollDone <- true
+			switch e {
+			case SD_JOURNAL_NOP, SD_JOURNAL_APPEND, SD_JOURNAL_INVALIDATE:
+				// TODO: need to account for any of these?
+			default:
+				log.Printf("Received unknown event: %d\n", e)
+			}
+			continue process
 		}
 	}
+
+	return
 }
 
-// simpleMessageFormatter is the default formatter.
-// It returns a string representing the current journal entry in a simple format which
+// buildMessage returns a string representing the current journal entry in a simple format which
 // includes the entry timestamp and MESSAGE field.
-func simpleMessageFormatter(entry *JournalEntry) (string, error) {
-	msg, ok := entry.Fields["MESSAGE"]
-	if !ok {
-		return "", fmt.Errorf("no MESSAGE field present in journal entry")
+func (r *JournalReader) buildMessage() (string, error) {
+	var msg string
+	var usec uint64
+	var err error
+
+	if msg, err = r.journal.GetData("MESSAGE"); err != nil {
+		return "", err
 	}
 
-	usec := entry.RealtimeTimestamp
+	if usec, err = r.journal.GetRealtimeUsec(); err != nil {
+		return "", err
+	}
+
 	timestamp := time.Unix(0, int64(usec)*int64(time.Microsecond))
 
 	return fmt.Sprintf("%s %s\n", timestamp, msg), nil
