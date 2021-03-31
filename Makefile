@@ -78,12 +78,14 @@ version:
 	@echo $(VERSION)
 
 ./bin/log-counter: $(PKG_SOURCES)
-	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux go build -o bin/log-counter \
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GO111MODULE=off \
+	go build -o bin/log-counter \
 	     -ldflags '-X $(PKG)/pkg/version.version=$(VERSION)' \
 	     $(BUILD_TAGS) cmd/logcounter/log_counter.go
 
 ./bin/node-problem-detector: $(PKG_SOURCES)
-	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux go build -o bin/node-problem-detector \
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GO111MODULE=off \
+	go build -o bin/node-problem-detector \
 	     -ldflags '-X $(PKG)/pkg/version.version=$(VERSION)' \
 	     $(BUILD_TAGS) cmd/node_problem_detector.go
 
