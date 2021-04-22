@@ -1,3 +1,5 @@
+// +build journald
+
 /*
 Copyright 2018 The Kubernetes Authors All rights reserved.
 
@@ -115,12 +117,15 @@ func TestCount(t *testing.T) {
 				for _, log := range logs {
 					ch <- log
 				}
-				// trigger the timeout to ensure the test doesn't block permenantly
+				// trigger the timeout to ensure the test doesn't block permanently
 				for {
 					fakeClock.Step(2 * timeout)
 				}
 			}(tc.logs, logCh)
-			actualCount := counter.Count()
+			actualCount, err := counter.Count()
+			if err != nil {
+				t.Errorf("unexpected error %v", err)
+			}
 			if actualCount != tc.expectedCount {
 				t.Errorf("got %d; expected %d", actualCount, tc.expectedCount)
 			}

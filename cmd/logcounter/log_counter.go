@@ -1,3 +1,5 @@
+// +build journald
+
 /*
 Copyright 2018 The Kubernetes Authors All rights reserved.
 
@@ -17,6 +19,7 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -28,16 +31,26 @@ import (
 )
 
 func main() {
+	// Set glog flag so that it does not log to files.
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		fmt.Printf("Failed to set logtostderr=true: %v", err)
+		os.Exit(int(types.Unknown))
+	}
+
 	fedo := options.NewLogCounterOptions()
 	fedo.AddFlags(pflag.CommandLine)
 	pflag.Parse()
 
-	counter, err := logcounter.NewKmsgLogCounter(fedo)
+	counter, err := logcounter.NewJournaldLogCounter(fedo)
 	if err != nil {
 		fmt.Print(err)
 		os.Exit(int(types.Unknown))
 	}
-	actual := counter.Count()
+	actual, err := counter.Count()
+	if err != nil {
+		fmt.Print(err)
+		os.Exit(int(types.Unknown))
+	}
 	if actual >= fedo.Count {
 		fmt.Printf("Found %d matching logs, which meets the threshold of %d\n", actual, fedo.Count)
 		os.Exit(int(types.NonOK))
