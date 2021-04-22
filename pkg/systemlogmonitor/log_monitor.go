@@ -23,6 +23,8 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/node-problem-detector/pkg/problemdaemon"
+	"k8s.io/node-problem-detector/pkg/problemmetrics"
 	"k8s.io/node-problem-detector/pkg/systemlogmonitor/logwatchers"
 	watchertypes "k8s.io/node-problem-detector/pkg/systemlogmonitor/logwatchers/types"
 	logtypes "k8s.io/node-problem-detector/pkg/systemlogmonitor/types"
@@ -32,7 +34,18 @@ import (
 	"k8s.io/node-problem-detector/pkg/util/tomb"
 )
 
+const SystemLogMonitorName = "system-log-monitor"
+
+func init() {
+	problemdaemon.Register(
+		SystemLogMonitorName,
+		types.ProblemDaemonHandler{
+			CreateProblemDaemonOrDie: NewLogMonitorOrDie,
+			CmdOptionDescription:     "Set to config file paths."})
+}
+
 type logMonitor struct {
+	configPath string
 	watcher    watchertypes.LogWatcher
 	buffer     LogBuffer
 	config     MonitorConfig
@@ -45,8 +58,10 @@ type logMonitor struct {
 // NewLogMonitorOrDie create a new LogMonitor, panic if error occurs.
 func NewLogMonitorOrDie(configPath string) types.Monitor {
 	l := &logMonitor{
-		tomb: tomb.NewTomb(),
+		configPath: configPath,
+		tomb:       tomb.NewTomb(),
 	}
+
 	f, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		glog.Fatalf("Failed to read configuration file %q: %v", configPath, err)
@@ -59,18 +74,41 @@ func NewLogMonitorOrDie(configPath string) types.Monitor {
 	(&l.config).ApplyDefaultConfiguration()
 	err = l.config.ValidateRules()
 	if err != nil {
-		glog.Fatalf("Failed to validate matching rules %+v: %v", l.config.Rules, err)
+		glog.Fatalf("Failed to validate %s matching rules %+v: %v", l.configPath, l.config.Rules, err)
 	}
-	glog.Infof("Finish parsing log monitor config file: %+v", l.config)
+	glog.Infof("Finish parsing log monitor config file %s: %+v", l.configPath, l.config)
+
 	l.watcher = logwatchers.GetLogWatcherOrDie(l.config.WatcherConfig)
 	l.buffer = NewLogBuffer(l.config.BufferSize)
 	// A 1000 size channel should be big enough.
 	l.output = make(chan *types.Status, 1000)
+
+	if *l.config.EnableMetricsReporting {
+		initializeProblemMetricsOrDie(l.config.Rules)
+	}
 	return l
 }
 
+// initializeProblemMetricsOrDie creates problem metrics for all problems and set the value to 0,
+// panic if error occurs.
+func initializeProblemMetricsOrDie(rules []systemlogtypes.Rule) {
+	for _, rule := range rules {
+		if rule.Type == types.Perm {
+			err := problemmetrics.GlobalProblemMetricsManager.SetProblemGauge(rule.Condition, rule.Reason, false)
+			if err != nil {
+				glog.Fatalf("Failed to initialize problem gauge metrics for problem %q, reason %q: %v",
+					rule.Condition, rule.Reason, err)
+			}
+		}
+		err := problemmetrics.GlobalProblemMetricsManager.IncrementProblemCounter(rule.Reason, 0)
+		if err != nil {
+			glog.Fatalf("Failed to initialize problem counter metrics for %q: %v", rule.Reason, err)
+		}
+	}
+}
+
 func (l *logMonitor) Start() (<-chan *types.Status, error) {
-	glog.Info("Start log monitor")
+	glog.Infof("Start log monitor %s", l.configPath)
 	var err error
 	l.logCh, err = l.watcher.Watch()
 	if err != nil {
@@ -81,21 +119,28 @@ func (l *logMonitor) Start() (<-chan *types.Status, error) {
 }
 
 func (l *logMonitor) Stop() {
-	glog.Info("Stop log monitor")
+	glog.Infof("Stop log monitor %s", l.configPath)
 	l.tomb.Stop()
 }
 
 // monitorLoop is the main loop of log monitor.
 func (l *logMonitor) monitorLoop() {
-	defer l.tomb.Done()
+	defer func() {
+		close(l.output)
+		l.tomb.Done()
+	}()
 	l.initializeStatus()
 	for {
 		select {
-		case log := <-l.logCh:
+		case log, ok := <-l.logCh:
+			if !ok {
+				glog.Errorf("Log channel closed: %s", l.configPath)
+				return
+			}
 			l.parseLog(log)
 		case <-l.tomb.Stopping():
 			l.watcher.Stop()
-			glog.Infof("Log monitor stopped")
+			glog.Infof("Log monitor stopped: %s", l.configPath)
 			return
 		}
 	}
@@ -123,6 +168,7 @@ func (l *logMonitor) generateStatus(logs []*logtypes.Log, rule systemlogtypes.Ru
 	timestamp := logs[0].Timestamp
 	message := generateMessage(logs)
 	var events []types.Event
+	var changedConditions []*types.Condition
 	if rule.Type == types.Temp {
 		// For temporary error only generate event
 		events = append(events, types.Event{
@@ -151,10 +197,29 @@ func (l *logMonitor) generateStatus(logs []*logtypes.Log, rule systemlogtypes.Ru
 				}
 				condition.Status = types.True
 				condition.Reason = rule.Reason
+				changedConditions = append(changedConditions, condition)
 				break
 			}
 		}
 	}
+
+	if *l.config.EnableMetricsReporting {
+		for _, event := range events {
+			err := problemmetrics.GlobalProblemMetricsManager.IncrementProblemCounter(event.Reason, 1)
+			if err != nil {
+				glog.Errorf("Failed to update problem counter metrics for %q: %v", event.Reason, err)
+			}
+		}
+		for _, condition := range changedConditions {
+			err := problemmetrics.GlobalProblemMetricsManager.SetProblemGauge(
+				condition.Type, condition.Reason, condition.Status == types.True)
+			if err != nil {
+				glog.Errorf("Failed to update problem gauge metrics for problem %q, reason %q: %v",
+					condition.Type, condition.Reason, err)
+			}
+		}
+	}
+
 	return &types.Status{
 		Source: l.config.Source,
 		// TODO(random-liu): Aggregate events and conditions and then do periodically report.
